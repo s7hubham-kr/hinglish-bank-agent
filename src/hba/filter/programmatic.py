@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from hba.schemas import INTENT_KIND, Intent, Sample, validate_tool_call
+from hba.schemas import INTENT_KIND, Sample, validate_tool_call
 
 DEVANAGARI = re.compile(r"[\u0900-\u097F]")
 LATIN = re.compile(r"[a-zA-Z]")

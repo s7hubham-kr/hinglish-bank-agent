@@ -12,8 +12,6 @@ _WS = re.compile(r"\s+")
 
 
 def _dedup_text(sample: Sample) -> str:
-    # tool results and ids are volatile; two convos that differ only in a mocked
-    # balance or a random id are duplicates for dedup purposes.
     parts: list[str] = []
     for m in sample.messages:
         if m.role == "tool":
@@ -51,6 +49,7 @@ class DedupStats:
     exact_removed: int
     near_removed: int
     kept: int
+    removed_by_intent: dict[str, int] = field(default_factory=dict)
 
 
 def dedup(
@@ -60,7 +59,6 @@ def dedup(
 ) -> tuple[list[Sample], DedupStats]:
     total = len(samples)
 
-    # stage 1: exact
     seen: set[str] = set()
     exact_kept: list[Sample] = []
     for s in samples:
@@ -71,7 +69,6 @@ def dedup(
         exact_kept.append(s)
     exact_removed = total - len(exact_kept)
 
-    # stage 2: near-duplicate via LSH
     lsh = MinHashLSH(threshold=threshold, num_perm=num_perm)
     kept: list[Sample] = []
     near_removed = 0

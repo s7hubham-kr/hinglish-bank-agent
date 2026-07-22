@@ -4,7 +4,7 @@ import asyncio
 import json
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import httpx
 
@@ -137,9 +137,6 @@ class Judge:
 
 
 def agreement(verdicts: list[Verdict], human_labels: dict[str, bool]) -> dict[str, float]:
-    # compares judge pass/fail against human pass/fail on the calibration set.
-    # returns the headline agreement plus a confusion breakdown so we can see
-    # whether the judge is too lenient or too strict before trusting it at scale.
     paired = [(v, human_labels[v.sample_id]) for v in verdicts if v.sample_id in human_labels]
     if not paired:
         return {"n": 0, "agreement": 0.0}
