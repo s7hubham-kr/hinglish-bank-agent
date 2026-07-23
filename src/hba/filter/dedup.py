@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from __future__ import annotations
-
 import hashlib
 import re
 from dataclasses import dataclass, field
@@ -63,9 +61,11 @@ def dedup(
 
     seen: set[str] = set()
     exact_kept: list[Sample] = []
+    removed_by_intent: dict[str, int] = {}
     for s in samples:
         key = _norm_key(s)
         if key in seen:
+            removed_by_intent[s.intent.value] = removed_by_intent.get(s.intent.value, 0) + 1
             continue
         seen.add(key)
         exact_kept.append(s)
@@ -79,6 +79,7 @@ def dedup(
         mh = _minhash(text, num_perm)
         if lsh.query(mh):
             near_removed += 1
+            removed_by_intent[s.intent.value] = removed_by_intent.get(s.intent.value, 0) + 1
             continue
         lsh.insert(str(i), mh)
         kept.append(s)
@@ -88,5 +89,6 @@ def dedup(
         exact_removed=exact_removed,
         near_removed=near_removed,
         kept=len(kept),
+        removed_by_intent=removed_by_intent,
     )
     return kept, stats

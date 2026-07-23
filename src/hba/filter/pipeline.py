@@ -11,6 +11,7 @@ from hba.schemas import Sample
 
 OVERALL_REJECT_GATE = 0.10
 SLICE_REJECT_GATE = 0.20
+DIVERSITY_WARN_GATE = 0.30
 
 
 @dataclass
@@ -20,9 +21,7 @@ class StageCounts:
 
     def rate(self, intent: str) -> float:
         n = self.per_intent_in.get(intent, 0)
-        if n == 0:
-            return 0.0
-        return self.per_intent_rejected.get(intent, 0) / n
+        return 0.0 if n == 0 else self.per_intent_rejected.get(intent, 0) / n
 
 
 @dataclass
@@ -36,35 +35,41 @@ class PipelineReport:
     judge: StageCounts
     exact_removed: int
     near_removed: int
+    dedup_by_intent: dict[str, int] = field(default_factory=dict)
     reject_reasons: dict[str, int] = field(default_factory=dict)
 
     @property
     def overall_reject_rate(self) -> float:
-        if self.generated == 0:
-            return 0.0
-        return 1.0 - (self.passed / self.generated)
+        return 0.0 if self.generated == 0 else 1.0 - (self.passed / self.generated)
+
+    @property
+    def slices_to_regenerate(self) -> list[str]:
+        # quality rejects only: programmatic + judge. dedup removals are tracked
+        # separately as a diversity signal, since they call for more seed variety
+        # rather than regenerating the same prompt.
+        out: list[str] = []
+        for intent, gen_in in self.programmatic.per_intent_in.items():
+            if gen_in == 0:
+                continue
+            prog_rej = self.programmatic.per_intent_rejected.get(intent, 0)
+            jud_rej = self.judge.per_intent_rejected.get(intent, 0)
+            if (prog_rej + jud_rej) / gen_in > SLICE_REJECT_GATE:
+                out.append(intent)
+        return sorted(out)
+
+    @property
+    def low_diversity_slices(self) -> list[str]:
+        out: list[str] = []
+        for intent, gen_in in self.programmatic.per_intent_in.items():
+            if gen_in == 0:
+                continue
+            if self.dedup_by_intent.get(intent, 0) / gen_in > DIVERSITY_WARN_GATE:
+                out.append(intent)
+        return sorted(out)
 
     @property
     def gate_passed(self) -> bool:
         return self.overall_reject_rate < OVERALL_REJECT_GATE and not self.slices_to_regenerate
-
-    @property
-    def slices_to_regenerate(self) -> list[str]:
-        out: list[str] = []
-        for intent in {**self.programmatic.per_intent_in, **self.judge.per_intent_in}:
-            prog = self.programmatic.rate(intent)
-            jud = self.judge.rate(intent)
-
-            gen_in = self.programmatic.per_intent_in.get(intent, 0)
-            if gen_in == 0:
-                continue
-            prog_rej = self.programmatic.per_intent_rejected.get(intent, 0)
-            survivors = gen_in - prog_rej
-            jud_rej = self.judge.per_intent_rejected.get(intent, 0)
-            total_rej = prog_rej + jud_rej
-            if total_rej / gen_in > SLICE_REJECT_GATE:
-                out.append(intent)
-        return sorted(out)
 
 
 def run_filters(
@@ -87,18 +92,20 @@ def run_filters(
         if result.ok:
             prog_kept.append(s)
         else:
-            prog.per_intent_rejected[s.intent.value] = prog.per_intent_rejected.get(s.intent.value, 0) + 1
+            prog.per_intent_rejected[s.intent.value] = (
+                prog.per_intent_rejected.get(s.intent.value, 0) + 1
+            )
             for r in result.reasons:
-                key = r.split("(")[0].strip()
-                reasons[key] += 1
+                reasons[r.split("(")[0].strip()] += 1
 
     deduped, dstats = dedup_mod.dedup(prog_kept, threshold=dedup_threshold)
-
     noised = apply_noise(deduped, fraction=noise_fraction, seed=seed)
 
     judge_counts = StageCounts()
     for s in noised:
-        judge_counts.per_intent_in[s.intent.value] = judge_counts.per_intent_in.get(s.intent.value, 0) + 1
+        judge_counts.per_intent_in[s.intent.value] = (
+            judge_counts.per_intent_in.get(s.intent.value, 0) + 1
+        )
 
     if verdicts is None:
         passed_samples = noised
@@ -126,6 +133,7 @@ def run_filters(
         judge=judge_counts,
         exact_removed=dstats.exact_removed,
         near_removed=dstats.near_removed,
+        dedup_by_intent=dstats.removed_by_intent,
         reject_reasons=dict(reasons),
     )
     return passed_samples, report
@@ -142,7 +150,9 @@ def format_report(report: PipelineReport) -> str:
         f"gate passed:        {report.gate_passed}",
     ]
     if report.slices_to_regenerate:
-        lines.append(f"regenerate slices:  {', '.join(report.slices_to_regenerate)}")
+        lines.append(f"regenerate (quality): {', '.join(report.slices_to_regenerate)}")
+    if report.low_diversity_slices:
+        lines.append(f"low diversity (add seeds): {', '.join(report.low_diversity_slices)}")
     if report.reject_reasons:
         top = sorted(report.reject_reasons.items(), key=lambda x: -x[1])[:5]
         lines.append("top reject reasons: " + ", ".join(f"{k}={v}" for k, v in top))
