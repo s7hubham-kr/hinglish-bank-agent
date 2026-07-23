@@ -6,8 +6,7 @@ from dataclasses import dataclass, field
 from hba.augment.noise import apply_noise
 from hba.filter import dedup as dedup_mod
 from hba.filter import programmatic
-from hba.filter.judge import Verdict
-from hba.schemas import Intent, Sample
+from hba.schemas import Intent
 
 OVERALL_REJECT_GATE = 0.10
 SLICE_REJECT_GATE = 0.20
@@ -54,7 +53,7 @@ class PipelineReport:
         for intent in {**self.programmatic.per_intent_in, **self.judge.per_intent_in}:
             prog = self.programmatic.rate(intent)
             jud = self.judge.rate(intent)
-            
+
             gen_in = self.programmatic.per_intent_in.get(intent, 0)
             if gen_in == 0:
                 continue
