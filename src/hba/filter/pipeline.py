@@ -6,7 +6,8 @@ from dataclasses import dataclass, field
 from hba.augment.noise import apply_noise
 from hba.filter import dedup as dedup_mod
 from hba.filter import programmatic
-from hba.schemas import Intent
+from hba.filter.judge import Verdict
+from hba.schemas import Sample
 
 OVERALL_REJECT_GATE = 0.10
 SLICE_REJECT_GATE = 0.20
