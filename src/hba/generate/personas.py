@@ -21,7 +21,7 @@ MOOD_BY_INTENT: dict[Intent, list[str]] = {
     Intent.TXN_DISPUTE: ["frustrated", "angry", "angry"],
     Intent.REFUND_STATUS: ["confused", "frustrated", "angry"],
     Intent.UPI_FAILURE: ["confused", "frustrated", "angry"],
-    Intent.STATEMENT_REQUEST: ["calm", "neutral", "calm"],
+    Intent.STATEMENT_REQUEST: ["calm", "calm", "confused"],
     Intent.BENEFICIARY_ADD: ["calm", "confused"],
     Intent.FD_RATES: ["calm"],
     Intent.KYC_UPDATE: ["calm", "confused", "frustrated"],
